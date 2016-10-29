@@ -17,7 +17,7 @@ import org.jsoup.select.Elements;
 public class Crawler implements Runnable {
     
     //argument variables
-    private static Path seedPath;
+    private static Path seedPath;				//the path to the document holding the starting urls
     private static int numPagesToCrawl;
     private static int numLevels;
     private static Path storagePath;
@@ -29,6 +29,8 @@ public class Crawler implements Runnable {
     
     //URL queue. Many threads will access it.
     private static ConcurrentLinkedQueue<String> frontier = new ConcurrentLinkedQueue<String>();
+    //long holding number of created documents, used to generate document names
+    long DocNameCount = 0;
     
     Crawler(String name){
         threadName = name;
@@ -38,12 +40,16 @@ public class Crawler implements Runnable {
     
     //given a URL, generates a filename
     private String generateFileName(String url) {
-        return "FileName.html";
+    	//TODO: make sure no counts can be lost (concurrency issue!)
+    	DocNameCount++;
+        return DocNameCount + ".html";
     }
     
     //saves the contents of a page into a file "filename."
     //returns true on success, false otherwise
     private boolean saveAsFile(String fileName, String htmlContent){
+    	//TODO: implement this method
+    	//System.out.println("filename is " + fileName);
         return true;
     }
     
@@ -67,7 +73,8 @@ public class Crawler implements Runnable {
         //System.out.println(url);
         Elements urlLinks = doc.select("a[href]");
         for(Element e : urlLinks){
-            System.out.println(url + ": " + e.attr("href"));
+            //System.out.println(url + ": " + e.attr("href"));
+        	//TODO: add valid urls to frontier
         }
         
         return htmlContent;
@@ -100,6 +107,7 @@ public class Crawler implements Runnable {
 	        if(args.length ==  4) storagePath = Paths.get(args[3]);
             else storagePath = Paths.get("./crawledPages");
 	        
+	        //Creates a folder to store crawled pages
 	        File dir = storagePath.toFile();
             if(dir.mkdirs()) System.out.println("Storage folder successfully created");
             else if(!dir.exists()){
@@ -121,9 +129,12 @@ public class Crawler implements Runnable {
 	    //System.out.println("Storage Path: " + storagePath);
 	    
 	    //initialize the frontier
+        //frontier is a global queue
         Scanner seedScanner = null;
         try {
             seedScanner = new Scanner(seedPath);
+            //gets all lines from the document specified in seedPath
+            //enters each line into frontier queue
             while(seedScanner.hasNext()){
                 String URL = seedScanner.next();
                 frontier.add(URL);
@@ -134,13 +145,16 @@ public class Crawler implements Runnable {
             seedScanner.close();
         }
         
-        //here
+        //creates Crawlers to be used as threads
 	    Crawler[] c = new Crawler[4];
-	    for(int i = 0; i < 4; i++){
+	    for(int i = 0; i < 1; i++){						//currently set to 1 thread
 	        c[i] = new Crawler("Thread " + i);
+	        //starts running the thread
 	        c[i].start();
 	    }
 	    
+	    //loops until frontier is empty
+	    //TODO: should run until we have crawled numPagesToCrawl or we crawl all of our levels
 	    while(!frontier.isEmpty());
 	    
 	    System.out.println(frontier.toString());
@@ -158,17 +172,22 @@ public class Crawler implements Runnable {
             
             //downloads the page located at url if it is a valid link
             if(url != null){
+            	//if the url doesn't have a protocol, attempts to fix it
                 if(!url.startsWith("http://") && !url.startsWith("https://")){
                     System.out.println("ERROR: URL DOESN'T HAVE PROTOCOL! Attemping recovery by prepending protocol");
                     url  = "http://" + url;
                 }
                 
+                
                 try {
-                  System.out.println(threadName + ": " + url);
-                  String contents = downloadFile(url);
+                	//TODO: check if url is a valid webpage, and thus add to frontier
+                	System.out.println(threadName + ": " + url);
+                  	String contents = downloadFile(url);
+                  	
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
+                
             }
         }
         return;
