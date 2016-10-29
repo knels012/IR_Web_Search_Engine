@@ -2,7 +2,12 @@ import java.io.*;
 import java.nio.file.*;
 import java.util.Scanner;
 import java.util.concurrent.*;
-import java.net.URL.*;
+
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+
+import java.net.MalformedURLException;
+import java.net.URL;
 
 //we need jsoup library for html parsing
 //Java.net.URL also useful
@@ -63,25 +68,44 @@ public class Crawler {
 	    //System.out.println("Storage Path: " + storagePath);
 	    
 	    //initialize the frontier
-	    Scanner s = null;
+        Scanner seedScanner = null;
         try {
-            s = new Scanner(seedPath);
-            while(s.hasNext()){
-                String URL = s.next();
+            seedScanner = new Scanner(seedPath);
+            while(seedScanner.hasNext()){
+                String URL = seedScanner.next();
                 frontier.add(URL);
             }
         } catch (IOException e) {
             e.printStackTrace();
         } finally {
-            s.close();
+            seedScanner.close();
         }
         
         //prints the contents of frontier
         System.out.println("Seeds:");
-	    for(String URL : frontier){
-	        System.out.println(URL);
+	    for(String i : frontier){
+	        //checks if the URL string begins with a valid protocol. Adds one if it doesn't have one
+	        String link = i;
+	        if(!link.startsWith("http://") && !link.startsWith("https://")){
+    	        link  = "http://" + link;
+	        }
+	        
+	        //URL u = null;
+            //try {
+            //    u = new URL(link);
+            //    System.out.println(u);
+            //} catch (MalformedURLException e) {
+            //    e.printStackTrace();
+            //}
+	        String doc = null;
+	        try {
+	            System.out.println(link + "\n");
+	            doc = Jsoup.connect(link).get().html();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+	        
+	        System.out.println(doc);
 	    }
-	    
-	    
 	}
 }
