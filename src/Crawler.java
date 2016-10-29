@@ -4,15 +4,13 @@ import java.net.URISyntaxException;
 import java.nio.file.*;
 import java.util.Scanner;
 import java.util.concurrent.*;
-
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 
-//we need jsoup library for html parsing
 //Java.net.URL also useful
 
-public class Crawler{
+public class Crawler implements Runnable {
     
     //argument variables
     private static Path seedPath;
@@ -20,8 +18,18 @@ public class Crawler{
     private static int numLevels;
     private static Path storagePath;
     
+    //Thread variables
+    private Thread t;
+    private String threadName;
+    
     //URL queue. Many threads will access it.
     private static ConcurrentLinkedQueue<String> frontier = new ConcurrentLinkedQueue<String>();
+    
+    Crawler(String name){
+        threadName = name;
+        System.out.println("Creating " + threadName);
+    }
+    
     
     //given a URL, generates a filename
     private static String generateFileName(String url) {
@@ -112,25 +120,54 @@ public class Crawler{
         } finally {
             seedScanner.close();
         }
+        //here
+	    Crawler[] c = new Crawler[4];
+	    for(int i = 0; i < 4; i++){
+	        c[i] = new Crawler("Thread " + i);
+	        c[i].start();
+	    }
+	}
+	
+	//This handles the actions of the thread
+    @Override
+    public void run() {
+//        System.out.println("Running " + threadName);
+//        try{
+//            for(int i = 4; i > 0; i--) {
+//                System.out.println("Thread: " + threadName + ", " + i);
+//                Thread.sleep(50); //thread sleeps
+//            }
+//        } catch(InterruptedException e) {
+//            System.out.println("Thread: " + threadName + " interrupted.");
+//        }
+//        System.out.println("Thread: " + threadName + " exiting...");
         
-        //main for loop for traversing the queue
-	    while(!frontier.isEmpty()){
-	        
-	        //checks if the URL string begins with a valid protocol. Adds one if it doesn't have one
-	        //technically unnecessary because all links that enter should be properly normalized by this point
-	        String url = frontier.remove();
-	        if(!url.startsWith("http://") && !url.startsWith("https://")){
-    	        System.out.println("ERROR: FOUND A URL WITHOUT PROTOCOL! Attemping recovery by prepending protocol");
-	            url  = "http://" + url;
-	        }
-	        
-	        try {
-	            System.out.println(url);
-	            String contents = downloadFile(url);
-	            //System.out.println(contents);
+        while(!frontier.isEmpty()){ 
+            //checks if the URL string begins with a valid protocol. Adds one if it doesn't have one
+            //technically unnecessary because all links that enter should be properly normalized by this point
+            String url = frontier.remove();
+            if(!url.startsWith("http://") && !url.startsWith("https://")){
+                System.out.println("ERROR: FOUND A URL WITHOUT PROTOCOL! Attemping recovery by prepending protocol");
+                url  = "http://" + url;
+            }
+            
+          try {
+                System.out.println(threadName + ": " + url);
+              String contents = downloadFile(url);
+              //System.out.println(contents);
             } catch (IOException e) {
                 e.printStackTrace();
             }
-	    }
-	}
+        }
+        return;
+    }
+    
+    //call this to start a thread
+    public void start() {
+        System.out.println("Starting " + threadName);
+        if(t == null) {
+            t = new Thread(this, threadName);
+            t.start();
+        }
+    }
 }
