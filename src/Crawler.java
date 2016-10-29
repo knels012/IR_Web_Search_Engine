@@ -4,9 +4,13 @@ import java.net.URISyntaxException;
 import java.nio.file.*;
 import java.util.Scanner;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
+import org.jsoup.select.Elements;
 
 //Java.net.URL also useful
 
@@ -21,6 +25,7 @@ public class Crawler implements Runnable {
     //Thread variables
     private Thread t;
     private String threadName;
+    private static AtomicInteger pages;
     
     //URL queue. Many threads will access it.
     private static ConcurrentLinkedQueue<String> frontier = new ConcurrentLinkedQueue<String>();
@@ -32,18 +37,18 @@ public class Crawler implements Runnable {
     
     
     //given a URL, generates a filename
-    private static String generateFileName(String url) {
+    private String generateFileName(String url) {
         return "FileName.html";
     }
     
     //saves the contents of a page into a file "filename."
     //returns true on success, false otherwise
-    private static boolean saveAsFile(String fileName, String htmlContent){
+    private boolean saveAsFile(String fileName, String htmlContent){
         return true;
     }
     
     //downloads the page at the specified URL's location
-    public static String downloadFile(String url) throws IOException {
+    private String downloadFile(String url) throws IOException {
         //create the Connection
         Connection connection = Jsoup.connect(url);
         
@@ -58,6 +63,13 @@ public class Crawler implements Runnable {
             System.out.println("error saving document. url: " + url);
         }
         
+        //Gets all the links in the page
+        //System.out.println(url);
+        Elements urlLinks = doc.select("a[href]");
+        for(Element e : urlLinks){
+            System.out.println(url + ": " + e.attr("href"));
+        }
+        
         return htmlContent;
     }
     
@@ -70,6 +82,7 @@ public class Crawler implements Runnable {
 	    numPagesToCrawl = 0;
 	    numLevels = 0;
 	    storagePath = null;
+	    //pages = 0;
 	    
 	    //prints error message if arguments are wrong then exits
 	    if(args.length < 3 || args.length > 4){
@@ -120,43 +133,42 @@ public class Crawler implements Runnable {
         } finally {
             seedScanner.close();
         }
+        
         //here
 	    Crawler[] c = new Crawler[4];
 	    for(int i = 0; i < 4; i++){
 	        c[i] = new Crawler("Thread " + i);
 	        c[i].start();
 	    }
+	    
+	    while(!frontier.isEmpty());
+	    
+	    System.out.println(frontier.toString());
 	}
 	
 	//This handles the actions of the thread
     @Override
     public void run() {
-//        System.out.println("Running " + threadName);
-//        try{
-//            for(int i = 4; i > 0; i--) {
-//                System.out.println("Thread: " + threadName + ", " + i);
-//                Thread.sleep(50); //thread sleeps
-//            }
-//        } catch(InterruptedException e) {
-//            System.out.println("Thread: " + threadName + " interrupted.");
-//        }
-//        System.out.println("Thread: " + threadName + " exiting...");
-        
-        while(!frontier.isEmpty()){ 
-            //checks if the URL string begins with a valid protocol. Adds one if it doesn't have one
-            //technically unnecessary because all links that enter should be properly normalized by this point
-            String url = frontier.remove();
-            if(!url.startsWith("http://") && !url.startsWith("https://")){
-                System.out.println("ERROR: FOUND A URL WITHOUT PROTOCOL! Attemping recovery by prepending protocol");
-                url  = "http://" + url;
-            }
+        /* note: this while loop currently runs until the frontier is empty
+         * It should instead run until we have crawled numPagesToCrawl or we crawl all of our levels */
+        while(!frontier.isEmpty()){
             
-          try {
-                System.out.println(threadName + ": " + url);
-              String contents = downloadFile(url);
-              //System.out.println(contents);
-            } catch (IOException e) {
-                e.printStackTrace();
+            //url = head of the frontier; pops the head too
+            String url = frontier.poll();
+            
+            //downloads the page located at url if it is a valid link
+            if(url != null){
+                if(!url.startsWith("http://") && !url.startsWith("https://")){
+                    System.out.println("ERROR: URL DOESN'T HAVE PROTOCOL! Attemping recovery by prepending protocol");
+                    url  = "http://" + url;
+                }
+                
+                try {
+                  System.out.println(threadName + ": " + url);
+                  String contents = downloadFile(url);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
             }
         }
         return;
