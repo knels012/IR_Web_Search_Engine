@@ -1,18 +1,18 @@
 import java.io.*;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.file.*;
 import java.util.Scanner;
 import java.util.concurrent.*;
 
+import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
-
-import java.net.MalformedURLException;
-import java.net.URL;
 
 //we need jsoup library for html parsing
 //Java.net.URL also useful
 
-public class Crawler {
+public class Crawler{
     
     //argument variables
     private static Path seedPath;
@@ -23,7 +23,39 @@ public class Crawler {
     //URL queue. Many threads will access it.
     private static ConcurrentLinkedQueue<String> frontier = new ConcurrentLinkedQueue<String>();
     
-	public static void main(String[] args){
+    //given a URL, generates a filename
+    private static String generateFileName(String url) {
+        return "FileName.html";
+    }
+    
+    //saves the contents of a page into a file "filename."
+    //returns true on success, false otherwise
+    private static boolean saveAsFile(String fileName, String htmlContent){
+        return true;
+    }
+    
+    //downloads the page at the specified URL's location
+    public static String downloadFile(String url) throws IOException {
+        //create the Connection
+        Connection connection = Jsoup.connect(url);
+        
+        //request page with HTTP get
+        Document doc = connection.get();
+        
+        //get the HTML content
+        String htmlContent = doc.html();
+        
+        //saves the page in a file
+        if(!saveAsFile(generateFileName(url), htmlContent)){
+            System.out.println("error saving document. url: " + url);
+        }
+        
+        return htmlContent;
+    }
+    
+    
+    
+	public static void main(String[] args) {
 	    
 	    //initializing the variables
 	    seedPath = null;
@@ -81,31 +113,24 @@ public class Crawler {
             seedScanner.close();
         }
         
-        //prints the contents of frontier
-        System.out.println("Seeds:");
-	    for(String i : frontier){
+        //main for loop for traversing the queue
+	    while(!frontier.isEmpty()){
+	        
 	        //checks if the URL string begins with a valid protocol. Adds one if it doesn't have one
-	        String link = i;
-	        if(!link.startsWith("http://") && !link.startsWith("https://")){
-    	        link  = "http://" + link;
+	        //technically unnecessary because all links that enter should be properly normalized by this point
+	        String url = frontier.remove();
+	        if(!url.startsWith("http://") && !url.startsWith("https://")){
+    	        System.out.println("ERROR: FOUND A URL WITHOUT PROTOCOL! Attemping recovery by prepending protocol");
+	            url  = "http://" + url;
 	        }
 	        
-	        //URL u = null;
-            //try {
-            //    u = new URL(link);
-            //    System.out.println(u);
-            //} catch (MalformedURLException e) {
-            //    e.printStackTrace();
-            //}
-	        String doc = null;
 	        try {
-	            System.out.println(link + "\n");
-	            doc = Jsoup.connect(link).get().html();
+	            System.out.println(url);
+	            String contents = downloadFile(url);
+	            //System.out.println(contents);
             } catch (IOException e) {
                 e.printStackTrace();
             }
-	        
-	        System.out.println(doc);
 	    }
 	}
 }
