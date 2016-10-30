@@ -1,4 +1,5 @@
 import java.io.*;
+
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.*;
@@ -11,6 +12,8 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+
+//package java.util.concurrent.locks;
 
 //Java.net.URL also useful
 
@@ -30,7 +33,7 @@ public class Crawler implements Runnable {
     //URL queue. Many threads will access it.
     private static ConcurrentLinkedQueue<String> frontier = new ConcurrentLinkedQueue<String>();
     //long holding number of created documents, used to generate document names
-    private long DocNameCount = 0;
+    private static long DocNameCount = 0;
     private String[] url_doc_map;
     
     Crawler(String name){
@@ -41,15 +44,16 @@ public class Crawler implements Runnable {
     
     //given a URL, generates a filename
     private String generateFileName(String url) {
-    	//TODO: make sure no counts can be lost (concurrency issue!)
-    	DocNameCount++;
+	   	synchronized (this){
+	   		DocNameCount++;
+	   	}
         return DocNameCount + ".html";
     }
     
     //saves the contents of a page into a file "filename." Uses the storangePath variable
     //returns true on success, false otherwise
     private boolean saveAsFile(String fileName, String htmlContent){
-    	//System.out.println("filename is " + fileName);
+    	System.out.println("filename is " + fileName);
     	try{
     	    PrintWriter writer = new PrintWriter(storagePath + "/"+ fileName);
     	    writer.println(htmlContent);
