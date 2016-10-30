@@ -1,11 +1,11 @@
 import java.io.*;
-
-import java.net.URI;
-import java.net.URISyntaxException;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.nio.file.*;
 import java.util.Scanner;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.Semaphore;
 
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
@@ -13,20 +13,22 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
-//Java.net.URL also useful
 
 public class Crawler implements Runnable {
     
     //argument variables
-    private static Path seedPath;				//the path to the document holding the starting urls
-    private static int numPagesToCrawl;			//total number of pages to crawl
-    private static int numLevels;				//how deep from seed pages to go
-    private static Path storagePath;			//path to where crawled html pages will go
+    private static Path seedPath;				//the path to the document holding the starting URLs
+    private static int numPagesToCrawl;   //carries permits equal to the number of pages we will crawl
+    private static int numLevels;               //how many levels deep we will crawl
+    private static Path storagePath;            //path to where we store the html files
     
     //Thread variables
-    private Thread t;
-    private String threadName;
-    private static AtomicInteger pages;
+    private Thread t;                               //the Crawler object's thread
+    private String threadName;                      //name of the thread
+    private static AtomicInteger pagesCrawled;      //# of pages we have crawled
+    private static Semaphore pagesLeft;             //number of pages left to crawl
+    //private static AtomicInteger levelsCrawled;     //# of levels we have crawled
+    private static int numThreads;                  //number of threads to create
     
     //URL queue. Many threads will access it.
     private static ConcurrentLinkedQueue<String> frontier = new ConcurrentLinkedQueue<String>();
@@ -37,11 +39,37 @@ public class Crawler implements Runnable {
     //lock used with url_doc_map
     private static final Object lock = new Object();
     
+    //Crawler constructor
     Crawler(String name){
         threadName = name;
         System.out.println("Creating " + threadName);
     }
     
+    //Uses a base URL to normalize the given URL. Also cleans the URL of useless things.
+    private String normalizeURL(String base, String url) throws MalformedURLException{
+        URL context = new URL(base);
+        URL normalizedURL = new URL(context, url);
+        
+        String protocol = normalizedURL.getProtocol();
+        String host = normalizedURL.getHost();
+        String path = normalizedURL.getPath();
+        
+        return protocol + "://" + host + path;
+    }
+    
+    //checks if we have already crawled this URL
+    private boolean isDuplicate(String url){
+        //TODO: check if we have already crawled this URL
+        return false;
+    }
+    
+    //Returns false if the URL is not valid (i.e. we dont want it in the frontier)
+    private boolean isValidURL(String url){
+        if(url.startsWith("http://") && !isDuplicate(url)){
+            return true;
+        }
+        return false;
+    }
     
     //given a URL, generates a filename
     private String generateFileName(String url) {
@@ -59,12 +87,13 @@ public class Crawler implements Runnable {
     	    PrintWriter writer = new PrintWriter(storagePath + "/"+ fileName);
     	    writer.println(htmlContent);
     	    writer.close();
-    	} catch (Exception e) {
-    		System.out.println("Failed to save file");
+    	} catch (FileNotFoundException e) {
+    		e.printStackTrace();
     		return false;
     	}
         return true;
     }
+
     ///*
     private static boolean writeMapTxt() {
     	String[] curr;
@@ -96,8 +125,11 @@ public class Crawler implements Runnable {
     }
 	//*/
 
-	//downloads the page at the specified URL's location
-    private String downloadFile(String url) throws IOException {
+    //downloads the page at the specified URL's location
+    //returns true on success
+    private boolean downloadFile(String url) throws IOException {
+        boolean success = false;
+
         //create the Connection
         Connection connection = Jsoup.connect(url);
         
@@ -109,37 +141,42 @@ public class Crawler implements Runnable {
         String FileName = generateFileName(url);
         
         //saves the page in a file
-        if(!saveAsFile(FileName, htmlContent)){
-            System.out.println("error saving document. url: " + url);
+        if(success = saveAsFile(FileName, htmlContent)){
+            //succeeded in saving html file, now add to url-doc_map string list
+            synchronized (lock) {
+                url_doc_map = url_doc_map + url + " " + FileName + " ";
+            }
+            System.out.println("--" + threadName + ": " + url_doc_map);
         }
-        //succeeded in saving html file, now add to url-doc_map string list
         else {
-        	//TODO: add to url_doc_map
-        	synchronized (lock) {
-        		url_doc_map = url_doc_map + url + " " + FileName + " ";
-        	}
-        	System.out.println("--" + threadName + ": " + url_doc_map);
+            System.out.println("error saving document. url: " + url);
         }
         
         //Gets all the links in the page
-        //System.out.println(url);
         Elements urlLinks = doc.select("a[href]");
         for(Element e : urlLinks){
-            //System.out.println(url + ": " + e.attr("href"));
-        	//TODO: add valid urls to frontier
+            String hrefURL = e.attr("href");
+            String normalizedURL = normalizeURL(url, hrefURL);
+            if(isValidURL(normalizedURL)){
+                //System.out.println(normalizedURL);
+                //TODO: add URLs to frontier
+                try{
+                    frontier.add(normalizedURL);
+                } catch(NullPointerException ex){
+                    ex.printStackTrace();
+                }
+            }
         }
         
-	    
+
 	    //Writes url-doc maps into a file once DocName Count reaches required amount
 	    if (!url_doc_map.isEmpty() && DocCount == numPagesToCrawl) {
 	    	writeMapTxt();
 	    	System.out.println("Finished Crawler");
     	}
         
-        return htmlContent;
+        return success;
     }
-    
-    
     
 	public static void main(String[] args) {
 	    
@@ -148,7 +185,7 @@ public class Crawler implements Runnable {
 	    numPagesToCrawl = 0;
 	    numLevels = 0;
 	    storagePath = null;
-	    //pages = 0;
+	    pagesCrawled = new AtomicInteger(0);
 	    
 	    //prints error message if arguments are wrong then exits
 	    if(args.length < 3 || args.length > 4){
@@ -160,7 +197,8 @@ public class Crawler implements Runnable {
 	    //sets the variables to the arguments
         try {
             seedPath = Paths.get(args[0]);
-	        numPagesToCrawl = Integer.parseInt(args[1]);
+            numPagesToCrawl = Integer.parseInt(args[1]);
+	        pagesLeft = new Semaphore(numPagesToCrawl);
 	        numLevels = Integer.parseInt(args[2]);
 	        
 	        if(args.length ==  4) storagePath = Paths.get(args[3]);
@@ -205,50 +243,51 @@ public class Crawler implements Runnable {
             seedScanner.close();
         }
         
-        //creates Crawlers to be used as threads
-	    Crawler[] c = new Crawler[4];
-	    for(int i = 0; i < 4; i++){						//currently set to 4 thread
+        //creates Crawlers to be used as threads then runs them
+        numThreads = 4;
+	    Crawler[] c = new Crawler[numThreads];
+	    for(int i = 0; i < numThreads; i++){						//currently set to 4 thread
 	        c[i] = new Crawler("Thread " + i);
-	        //starts running the thread
 	        c[i].start();
 	    }
-	    
-	    //loops until frontier is empty
-	    //TODO: should run until we have crawled numPagesToCrawl or we crawl all of our levels
-	    while(!frontier.isEmpty());
-	    
-	    System.out.println(frontier.toString());
-	    
 	}
 	
 	//This handles the actions of the thread
     @Override
     public void run() {
-        /* note: this while loop currently runs until the frontier is empty
-         * It should instead run until we have crawled numPagesToCrawl or we crawl all of our levels */
-        while(!frontier.isEmpty()){
-            
-            //url = head of the frontier; pops the head too
-            String url = frontier.poll();
-            
-            //downloads the page located at url if it is a valid link
-            if(url != null){
-            	//if the url doesn't have a protocol, attempts to fix it
-                if(!url.startsWith("http://") && !url.startsWith("https://")){
-                    System.out.println("ERROR: URL DOESN'T HAVE PROTOCOL! Attemping recovery by prepending protocol");
-                    url  = "http://" + url;
+        while(pagesCrawled.get() < numPagesToCrawl){
+            if(pagesLeft.tryAcquire()){
+                //url = head of the frontier; pops the head too
+                String url = frontier.poll();
+                
+                if(url != null) {
+                    //if the URL doesn't have a protocol, attempts to fix it
+                    if(!url.startsWith("http://") && !url.startsWith("https://")){
+                        System.out.println("ERROR: URL DOESN'T HAVE PROTOCOL! Attemping recovery by prepending protocol");
+                        url  = "http://" + url;
+                    }
+                    
+                    //downloads the URL
+                    try {
+                        //System.out.println(threadName + ": " + url);
+                        if(pagesCrawled.get() < numPagesToCrawl){
+                            boolean success = downloadFile(url);
+                            if(success){
+                                //keeps track of how many pages we have crawled
+                                int p = pagesCrawled.incrementAndGet();
+                                System.out.println("Pages Crawled: " + p);
+                            }
+                            else pagesLeft.release(); //downloadFile failed. Release permit
+                        }
+                    } catch (IOException e) {
+                        //downloadFile threw an IOexception so we must release a permit
+                        pagesLeft.release();
+                        e.printStackTrace();
+                    }
+                    
                 }
-                
-                
-                try {
-                	//TODO: check if url is a valid webpage, and thus add to frontier
-                	System.out.println(threadName + ": " + url);
-                  	String contents = downloadFile(url);				//TODO: do we even need contents?
-                  	
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-                
+                //releases the permit since it did not "use" it to download a URL
+                else pagesLeft.release();
             }
         }
         return;
