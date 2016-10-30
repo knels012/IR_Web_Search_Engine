@@ -42,25 +42,26 @@ public class Crawler implements Runnable {
         System.out.println("Creating " + threadName);
     }
     
-    //Uses a base URL to normalize the given URL. See discussion slides 1 slide 24
-    private String normalizeURL(String base, String url){
-        String normalizedURL = url;
-        //try {
-        //    URL b = new URL(base);
-        //} catch (MalformedURLException e) {
-        //    e.printStackTrace();
-        //}
-        return normalizedURL;
+    //Uses a base URL to normalize the given URL.
+    //also cleans the URL of useless things.
+    private String normalizeURL(String base, String url) throws MalformedURLException{
+        URL context = new URL(base);
+        URL normalizedURL = new URL(context, url);
+        
+        String protocol = normalizedURL.getProtocol();
+        String host = normalizedURL.getHost();
+        String path = normalizedURL.getPath();
+        
+        return protocol + "://" + host + path;
     }
     
     //Returns false if the URL is not valid (i.e. we dont want it in the frontier)
     private boolean isValidURL(String url){
-        if(url == null || url.length() == 0) return false;
-        boolean isBookmark  = url.charAt(0) == '#';
-        boolean isSelf      = url == "/";
-        boolean httpsURL    = url.startsWith("https://");
-        if(isBookmark || isSelf || httpsURL) return false;
-        else return true;
+        if(url.startsWith("http://")){
+            return true;
+        }
+        
+        return false;
     }
     
     //given a URL, generates a filename
@@ -112,8 +113,9 @@ public class Crawler implements Runnable {
         for(Element e : urlLinks){
             //System.out.println(url + ": " + e.attr("href"));
             String hrefURL = e.attr("href");
-            if(isValidURL(hrefURL)){
-                String normalizedURL = normalizeURL(url, hrefURL);
+            String normalizedURL = normalizeURL(url, hrefURL);
+            if(isValidURL(normalizedURL.toString())){
+                System.out.println(normalizedURL);
               //TODO: add valid, normalized URLs to frontier
             }
         }
@@ -224,7 +226,7 @@ public class Crawler implements Runnable {
                 try {
                 	//TODO: check if url is a valid webpage, and thus add to frontier
                 	System.out.println(threadName + ": " + url);
-                  	String contents = downloadFile(url);				//TODO: do we even need contents?
+                  	downloadFile(url);
                   	
                 } catch (IOException e) {
                     e.printStackTrace();
