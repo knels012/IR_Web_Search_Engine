@@ -5,6 +5,7 @@ import java.nio.file.*;
 import java.util.Scanner;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.Semaphore;
 
 import org.jsoup.Connection;
@@ -33,7 +34,7 @@ public class Crawler implements Runnable {
     //URL queue. Many threads will access it.
     private static ConcurrentLinkedQueue<String> frontier = new ConcurrentLinkedQueue<String>();
     //long holding number of created documents, used to generate document names
-    private static long DocCount = 0;
+    private static AtomicLong docCount;
     //used to hold all url-document mappings
     private static String url_doc_map = " ";
     //lock used with url_doc_map
@@ -73,10 +74,7 @@ public class Crawler implements Runnable {
     
     //given a URL, generates a filename
     private String generateFileName(String url) {
-	   	synchronized (this){
-	   		DocCount++;
-	   	}
-        return DocCount + ".html";
+        return docCount.incrementAndGet() + ".html";
     }
     
     //saves the contents of a page into a file "filename." Uses the storangePath variable
@@ -112,7 +110,7 @@ public class Crawler implements Runnable {
     	*/
     	///*
     	try{
-    	    PrintWriter writer = new PrintWriter(storagePath + "/"+ "A_url_doc_map" + DocCount + ".txt");
+    	    PrintWriter writer = new PrintWriter(storagePath + "/"+ "A_url_doc_map" + docCount.get() + ".txt");
     	    for (int i = 1; i < curr.length - 1; i = i+2) {
     	    	writer.println(curr[i] + " " + curr[i+1]);
         	}
@@ -146,7 +144,7 @@ public class Crawler implements Runnable {
             synchronized (lock) {
                 url_doc_map = url_doc_map + url + " " + FileName + " ";
             }
-            System.out.println("--" + threadName + ": " + url_doc_map);
+            //System.out.println("--" + threadName + ": " + url_doc_map);
         }
         else {
             System.out.println("error saving document. url: " + url);
@@ -168,13 +166,6 @@ public class Crawler implements Runnable {
             }
         }
         
-
-	    //Writes url-doc maps into a file once DocName Count reaches required amount
-	    if (!url_doc_map.isEmpty() && DocCount == numPagesToCrawl) {
-	    	writeMapTxt();
-	    	System.out.println("Finished Crawler");
-    	}
-        
         return success;
     }
     
@@ -185,6 +176,7 @@ public class Crawler implements Runnable {
 	    numPagesToCrawl = 0;
 	    numLevels = 0;
 	    storagePath = null;
+	    docCount = new AtomicLong(0);
 	    pagesCrawled = new AtomicInteger(0);
 	    
 	    //prints error message if arguments are wrong then exits
@@ -244,12 +236,25 @@ public class Crawler implements Runnable {
         }
         
         //creates Crawlers to be used as threads then runs them
-        numThreads = 4;
+        long startTime = System.nanoTime();
+        numThreads = 16;
 	    Crawler[] c = new Crawler[numThreads];
 	    for(int i = 0; i < numThreads; i++){						//currently set to 4 thread
 	        c[i] = new Crawler("Thread " + i);
 	        c[i].start();
 	    }
+	    
+	    while(pagesCrawled.get() < numPagesToCrawl){}
+	    
+	    long endTime = System.nanoTime();
+	    
+	    System.out.println("seconds: " + (endTime - startTime) / 1000000000);
+	    
+	    //Writes url-doc maps into a file once DocName Count reaches required amount
+	    if (!url_doc_map.isEmpty() && docCount.get() == numPagesToCrawl) {
+	    	writeMapTxt();
+	    	System.out.println("Finished Crawler");
+    	}
 	}
 	
 	//This handles the actions of the thread
@@ -275,7 +280,7 @@ public class Crawler implements Runnable {
                             if(success){
                                 //keeps track of how many pages we have crawled
                                 int p = pagesCrawled.incrementAndGet();
-                                System.out.println("Pages Crawled: " + p);
+                                if(p % 100 == 0) System.out.println("Pages Crawled: " + p);
                             }
                             else pagesLeft.release(); //downloadFile failed. Release permit
                         }
