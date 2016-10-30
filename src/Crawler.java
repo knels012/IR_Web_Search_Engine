@@ -30,7 +30,8 @@ public class Crawler implements Runnable {
     //URL queue. Many threads will access it.
     private static ConcurrentLinkedQueue<String> frontier = new ConcurrentLinkedQueue<String>();
     //long holding number of created documents, used to generate document names
-    long DocNameCount = 0;
+    private long DocNameCount = 0;
+    private String[] url_doc_map;
     
     Crawler(String name){
         threadName = name;
@@ -45,11 +46,18 @@ public class Crawler implements Runnable {
         return DocNameCount + ".html";
     }
     
-    //saves the contents of a page into a file "filename."
+    //saves the contents of a page into a file "filename." Uses the storangePath variable
     //returns true on success, false otherwise
     private boolean saveAsFile(String fileName, String htmlContent){
-    	//TODO: implement this method
     	//System.out.println("filename is " + fileName);
+    	try{
+    	    PrintWriter writer = new PrintWriter(storagePath + "/"+ fileName);
+    	    writer.println(htmlContent);
+    	    writer.close();
+    	} catch (Exception e) {
+    		System.out.println("Failed to save file");
+    		return false;
+    	}
         return true;
     }
     
@@ -63,10 +71,15 @@ public class Crawler implements Runnable {
         
         //get the HTML content
         String htmlContent = doc.html();
+        String FileName = generateFileName(url);
         
         //saves the page in a file
-        if(!saveAsFile(generateFileName(url), htmlContent)){
+        if(!saveAsFile(FileName, htmlContent)){
             System.out.println("error saving document. url: " + url);
+        }
+        //succeeded in saving html file, now add to url-doc_map string array
+        else {
+        	//TODO: add to url_doc_map
         }
         
         //Gets all the links in the page
@@ -106,6 +119,7 @@ public class Crawler implements Runnable {
 	        
 	        if(args.length ==  4) storagePath = Paths.get(args[3]);
             else storagePath = Paths.get("./crawledPages");
+	        //TODO: remove any '/' at end
 	        
 	        //Creates a folder to store crawled pages
 	        File dir = storagePath.toFile();
@@ -147,7 +161,7 @@ public class Crawler implements Runnable {
         
         //creates Crawlers to be used as threads
 	    Crawler[] c = new Crawler[4];
-	    for(int i = 0; i < 1; i++){						//currently set to 1 thread
+	    for(int i = 0; i < 4; i++){						//currently set to 4 thread
 	        c[i] = new Crawler("Thread " + i);
 	        //starts running the thread
 	        c[i].start();
@@ -182,7 +196,7 @@ public class Crawler implements Runnable {
                 try {
                 	//TODO: check if url is a valid webpage, and thus add to frontier
                 	System.out.println(threadName + ": " + url);
-                  	String contents = downloadFile(url);
+                  	String contents = downloadFile(url);				//TODO: do we even need contents?
                   	
                 } catch (IOException e) {
                     e.printStackTrace();
