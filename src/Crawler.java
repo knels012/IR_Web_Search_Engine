@@ -7,6 +7,9 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.Semaphore;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
@@ -33,6 +36,7 @@ public class Crawler implements Runnable {
     
     //URL queue. Many threads will access it.
     private static ConcurrentLinkedQueue<String> frontier = new ConcurrentLinkedQueue<String>();
+    private static Map<String, Boolean> usedUrls_hashmap = Collections.synchronizedMap(new HashMap<String, Boolean>());
     //long holding number of created documents, used to generate document names
     private static AtomicLong docCount;
     //used to hold all url-document mappings
@@ -66,7 +70,12 @@ public class Crawler implements Runnable {
     
     //checks if we have already crawled this URL
     private boolean isDuplicate(String url){
-        //TODO: check if we have already crawled this URL
+    	synchronized (usedUrls_hashmap) {
+    		if (usedUrls_hashmap.get(url) != null) {
+    			System.out.println(url + " is a duplicate!");
+    			return true;
+    		}
+    	}
         return false;
     }
     
@@ -167,6 +176,11 @@ public class Crawler implements Runnable {
                         if(isValidURL(normalizedURL)){
                             //System.out.println(normalizedURL);
                             try{
+                            	//TODO: add url to Hashmap
+                            	synchronized (usedUrls_hashmap) {
+                            		usedUrls_hashmap.put(url, true);
+                            		System.out.println("Added " + url + " to hashmap");
+                            	}
                                 frontier.add(normalizedURL);
                             } catch(NullPointerException e){
                                 e.printStackTrace();
@@ -252,9 +266,9 @@ public class Crawler implements Runnable {
         
         //creates Crawlers to be used as threads then runs them
         long startTime = System.nanoTime();
-        numThreads = 16;
+        numThreads = 4;
 	    Crawler[] c = new Crawler[numThreads];
-	    for(int i = 0; i < numThreads; i++){						//currently set to 4 thread
+	    for(int i = 0; i < numThreads; i++){
 	        c[i] = new Crawler("Thread " + i);
 	        c[i].start();
 	    }
