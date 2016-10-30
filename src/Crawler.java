@@ -146,7 +146,7 @@ public class Crawler implements Runnable {
             synchronized (lock) {
                 url_doc_map = url_doc_map + url + " " + FileName + " ";
             }
-            System.out.println("--" + threadName + ": " + url_doc_map);
+            //System.out.println("--" + threadName + ": " + url_doc_map);
         }
         else {
             System.out.println("error saving document. url: " + url);
@@ -167,13 +167,6 @@ public class Crawler implements Runnable {
                 }
             }
         }
-        
-
-	    //Writes url-doc maps into a file once DocName Count reaches required amount
-	    if (!url_doc_map.isEmpty() && DocCount == numPagesToCrawl) {
-	    	writeMapTxt();
-	    	System.out.println("Finished Crawler");
-    	}
         
         return success;
     }
@@ -244,12 +237,18 @@ public class Crawler implements Runnable {
         }
         
         //creates Crawlers to be used as threads then runs them
-        numThreads = 4;
+        numThreads = 16;
 	    Crawler[] c = new Crawler[numThreads];
 	    for(int i = 0; i < numThreads; i++){						//currently set to 4 thread
 	        c[i] = new Crawler("Thread " + i);
 	        c[i].start();
 	    }
+	    
+	    //Writes url-doc maps into a file once DocName Count reaches required amount
+	    if (!url_doc_map.isEmpty() && DocCount == numPagesToCrawl) {
+	    	writeMapTxt();
+	    	System.out.println("Finished Crawler");
+    	}
 	}
 	
 	//This handles the actions of the thread
