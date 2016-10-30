@@ -78,7 +78,7 @@ public class Crawler implements Runnable {
     //saves the contents of a page into a file "filename." Uses the storangePath variable
     //returns true on success, false otherwise
     private boolean saveAsFile(String fileName, String htmlContent){
-    	System.out.println("filename is " + fileName);
+    	//System.out.println("filename is " + fileName);
     	try{
     	    PrintWriter writer = new PrintWriter(storagePath + "/"+ fileName);
     	    writer.println(htmlContent);
@@ -118,10 +118,14 @@ public class Crawler implements Runnable {
         for(Element e : urlLinks){
             String hrefURL = e.attr("href");
             String normalizedURL = normalizeURL(url, hrefURL);
-            if(isValidURL(normalizedURL.toString())){
+            if(isValidURL(normalizedURL)){
                 //System.out.println(normalizedURL);
                 //TODO: add URLs to frontier
-                //frontier.add(e);
+                try{
+                    frontier.add(normalizedURL);
+                } catch(NullPointerException ex){
+                    ex.printStackTrace();
+                }
             }
         }
         
@@ -219,7 +223,7 @@ public class Crawler implements Runnable {
                     
                     //downloads the URL
                     try {
-                        System.out.println(threadName + ": " + url);
+                        //System.out.println(threadName + ": " + url);
                         if(pagesCrawled.get() < numPagesToCrawl){
                             boolean success = downloadFile(url);
                             if(success){
