@@ -1,7 +1,8 @@
 import java.io.*;
-
+import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URL;
 import java.nio.file.*;
 import java.util.Scanner;
 import java.util.concurrent.*;
@@ -41,6 +42,26 @@ public class Crawler implements Runnable {
         System.out.println("Creating " + threadName);
     }
     
+    //Uses a base URL to normalize the given URL. See discussion slides 1 slide 24
+    private String normalizeURL(String base, String url){
+        String normalizedURL = url;
+        //try {
+        //    URL b = new URL(base);
+        //} catch (MalformedURLException e) {
+        //    e.printStackTrace();
+        //}
+        return normalizedURL;
+    }
+    
+    //Returns false if the URL is not valid (i.e. we dont want it in the frontier)
+    private boolean isValidURL(String url){
+        if(url == null || url.length() == 0) return false;
+        boolean isBookmark  = url.charAt(0) == '#';
+        boolean isSelf      = url == "/";
+        boolean httpsURL    = url.startsWith("https://");
+        if(isBookmark || isSelf || httpsURL) return false;
+        else return true;
+    }
     
     //given a URL, generates a filename
     private String generateFileName(String url) {
@@ -87,11 +108,14 @@ public class Crawler implements Runnable {
         }
         
         //Gets all the links in the page
-        //System.out.println(url);
         Elements urlLinks = doc.select("a[href]");
         for(Element e : urlLinks){
             //System.out.println(url + ": " + e.attr("href"));
-        	//TODO: add valid urls to frontier
+            String hrefURL = e.attr("href");
+            if(isValidURL(hrefURL)){
+                String normalizedURL = normalizeURL(url, hrefURL);
+              //TODO: add valid, normalized URLs to frontier
+            }
         }
         
         return htmlContent;
