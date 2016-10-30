@@ -5,6 +5,7 @@ import java.nio.file.*;
 import java.util.Scanner;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.Semaphore;
 
 import org.jsoup.Connection;
@@ -12,6 +13,7 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+
 
 public class Crawler implements Runnable {
     
@@ -32,8 +34,11 @@ public class Crawler implements Runnable {
     //URL queue. Many threads will access it.
     private static ConcurrentLinkedQueue<String> frontier = new ConcurrentLinkedQueue<String>();
     //long holding number of created documents, used to generate document names
-    private static long DocNameCount = 0;
-    private String[] url_doc_map;
+    private static AtomicLong docCount;
+    //used to hold all url-document mappings
+    private static String url_doc_map = " ";
+    //lock used with url_doc_map
+    private static final Object lock = new Object();
     
     //Crawler constructor
     Crawler(String name){
@@ -69,10 +74,7 @@ public class Crawler implements Runnable {
     
     //given a URL, generates a filename
     private String generateFileName(String url) {
-	   	synchronized (this){
-	   		DocNameCount++;
-	   	}
-        return DocNameCount + ".html";
+        return docCount.incrementAndGet() + ".html";
     }
     
     //saves the contents of a page into a file "filename." Uses the storangePath variable
@@ -89,12 +91,43 @@ public class Crawler implements Runnable {
     	}
         return true;
     }
-    
+
+    ///*
+    private static boolean writeMapTxt() {
+    	String[] curr;
+    	synchronized (lock) {
+    		curr = url_doc_map.split(" ");
+    		url_doc_map = "";
+    	}
+    	//TODO: create txt file, add strings two by two for lines
+    	//error checking if curr has odd number length or is empty
+    	/*
+    	System.out.println("==================");	
+    	for (int i = 1; i < curr.length - 1; i = i+2) {
+    		System.out.println(curr[i] + " " + curr[i+1]);
+    	}
+    	System.out.println("==================");
+    	*/
+    	///*
+    	try{
+    	    PrintWriter writer = new PrintWriter(storagePath + "/"+ "A_url_doc_map" + docCount.get() + ".txt");
+    	    for (int i = 1; i < curr.length - 1; i = i+2) {
+    	    	writer.println(curr[i] + " " + curr[i+1]);
+        	}
+    	    writer.close();
+    	} catch (Exception e) {
+    		System.out.println("writeMapTxt: Failed to save file");
+    		return false;
+    	}//*/
+    	return true;
+    }
+	//*/
+
     //downloads the page at the specified URL's location
     //returns true on success
     private boolean downloadFile(String url) throws IOException {
         boolean success = false;
-        
+
         //create the Connection
         Connection connection = Jsoup.connect(url);
         
@@ -107,7 +140,11 @@ public class Crawler implements Runnable {
         
         //saves the page in a file
         if(success = saveAsFile(FileName, htmlContent)){
-            //TODO: add to url-doc_map string array
+            //succeeded in saving html file, now add to url-doc_map string list
+            synchronized (lock) {
+                url_doc_map = url_doc_map + url + " " + FileName + " ";
+            }
+            //System.out.println("--" + threadName + ": " + url_doc_map);
         }
         else {
             System.out.println("error saving document. url: " + url);
@@ -139,6 +176,7 @@ public class Crawler implements Runnable {
 	    numPagesToCrawl = 0;
 	    numLevels = 0;
 	    storagePath = null;
+	    docCount = new AtomicLong(0);
 	    pagesCrawled = new AtomicInteger(0);
 	    
 	    //prints error message if arguments are wrong then exits
@@ -211,6 +249,12 @@ public class Crawler implements Runnable {
 	    long endTime = System.nanoTime();
 	    
 	    System.out.println("seconds: " + (endTime - startTime) / 1000000000);
+	    
+	    //Writes url-doc maps into a file once DocName Count reaches required amount
+	    if (!url_doc_map.isEmpty() && docCount.get() == numPagesToCrawl) {
+	    	writeMapTxt();
+	    	System.out.println("Finished Crawler");
+    	}
 	}
 	
 	//This handles the actions of the thread
