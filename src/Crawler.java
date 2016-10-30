@@ -198,12 +198,19 @@ public class Crawler implements Runnable {
         }
         
         //creates Crawlers to be used as threads then runs them
-        numThreads = 4;
+        long startTime = System.nanoTime();
+        numThreads = 16;
 	    Crawler[] c = new Crawler[numThreads];
 	    for(int i = 0; i < numThreads; i++){						//currently set to 4 thread
 	        c[i] = new Crawler("Thread " + i);
 	        c[i].start();
 	    }
+	    
+	    while(pagesCrawled.get() < numPagesToCrawl){}
+	    
+	    long endTime = System.nanoTime();
+	    
+	    System.out.println("seconds: " + (endTime - startTime) / 1000000000);
 	}
 	
 	//This handles the actions of the thread
@@ -229,7 +236,7 @@ public class Crawler implements Runnable {
                             if(success){
                                 //keeps track of how many pages we have crawled
                                 int p = pagesCrawled.incrementAndGet();
-                                System.out.println("Pages Crawled: " + p);
+                                if(p % 100 == 0) System.out.println("Pages Crawled: " + p);
                             }
                             else pagesLeft.release(); //downloadFile failed. Release permit
                         }
