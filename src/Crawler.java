@@ -47,9 +47,15 @@ public class Crawler implements Runnable {
     }
     
     //Uses a base URL to normalize the given URL. Also cleans the URL of useless things.
-    private String normalizeURL(String base, String url) throws MalformedURLException{
-        URL context = new URL(base);
-        URL normalizedURL = new URL(context, url);
+    //returns the cleaned, normalized URL on success, else returns null 
+    private String normalizeURL(String base, String url) {
+        URL normalizedURL = null;
+        try{
+            URL context = new URL(base);
+            normalizedURL = new URL(context, url);
+        } catch(MalformedURLException e){
+            return null;
+        }
         
         String protocol = normalizedURL.getProtocol();
         String host = normalizedURL.getHost();
@@ -66,30 +72,31 @@ public class Crawler implements Runnable {
     
     //Returns false if the URL is not valid (i.e. we dont want it in the frontier)
     private boolean isValidURL(String url){
-        if(url.startsWith("http://") && !isDuplicate(url)){
+        if(url != null && url.startsWith("http://") && !isDuplicate(url)){
             return true;
         }
         return false;
     }
     
     //given a URL, generates a filename
-    private String generateFileName(String url) {
+    private String generateFileName() {
         return docCount.incrementAndGet() + ".html";
     }
     
     //saves the contents of a page into a file "filename." Uses the storangePath variable
-    //returns true on success, false otherwise
-    private boolean saveAsFile(String fileName, String htmlContent){
+    //returns the fileName on success, otherwise returns null
+    private String saveAsFile(String htmlContent){
     	//System.out.println("filename is " + fileName);
     	try{
+    	    String fileName = generateFileName();
     	    PrintWriter writer = new PrintWriter(storagePath + "/"+ fileName);
-    	    writer.println(htmlContent);
+    	    writer.print(htmlContent);
     	    writer.close();
+    	    return fileName;
     	} catch (FileNotFoundException e) {
     		e.printStackTrace();
-    		return false;
+    		return null;
     	}
-        return true;
     }
 
     ///*
@@ -125,47 +132,55 @@ public class Crawler implements Runnable {
 
     //downloads the page at the specified URL's location
     //returns true on success
-    private boolean downloadFile(String url) throws IOException {
+    private boolean downloadFile(String url){
         boolean success = false;
-
-        //create the Connection
-        Connection connection = Jsoup.connect(url);
         
         //request page with HTTP get
-        Document doc = connection.get();
-        
-        //get the HTML content
-        String htmlContent = doc.html();
-        String FileName = generateFileName(url);
-        
-        //saves the page in a file
-        if(success = saveAsFile(FileName, htmlContent)){
-            //succeeded in saving html file, now add to url-doc_map string list
-            synchronized (lock) {
-                url_doc_map = url_doc_map + url + " " + FileName + " ";
-            }
-            //System.out.println("--" + threadName + ": " + url_doc_map);
-        }
-        else {
-            System.out.println("error saving document. url: " + url);
+        Document doc = null;
+        boolean getSuccess = false;
+        try {
+            doc = Jsoup.connect(url).get();
+            getSuccess = true;
+        } catch (IOException e) {
+            //getting the doc failed...
+            e.printStackTrace();
         }
         
-        //Gets all the links in the page
-        Elements urlLinks = doc.select("a[href]");
-        for(Element e : urlLinks){
-            String hrefURL = e.attr("href");
-            String normalizedURL = normalizeURL(url, hrefURL);
-            if(isValidURL(normalizedURL)){
-                //System.out.println(normalizedURL);
-                //TODO: add URLs to frontier
-                try{
-                    frontier.add(normalizedURL);
-                } catch(NullPointerException ex){
-                    ex.printStackTrace();
+        if(getSuccess){
+            //get the HTML content
+            String htmlContent = doc.html();
+            if(htmlContent != null){
+                //saves the page in a file
+                String fileName = saveAsFile(htmlContent);
+                if( fileName != null){
+                    //succeeded in saving html file, now add to url-doc_map string list
+                    synchronized (lock) {
+                        url_doc_map = url_doc_map + url + " " + fileName + " ";
+                    }
+                    //System.out.println("--" + threadName + ": " + url_doc_map);
+                    
+                    //Gets all the links in the page and add them into the frontier
+                    Elements urlLinks = doc.select("a[href]");
+                    for(Element elem : urlLinks){
+                        String hrefURL = elem.attr("href");
+                        String normalizedURL = normalizeURL(url, hrefURL);
+                        if(isValidURL(normalizedURL)){
+                            //System.out.println(normalizedURL);
+                            try{
+                                frontier.add(normalizedURL);
+                            } catch(NullPointerException e){
+                                e.printStackTrace();
+                            }
+                        }
+                    }
+                    
+                    success = true;
+                }
+                else {
+                    System.out.println("error saving document. url: " + url);
                 }
             }
         }
-        
         return success;
     }
     
@@ -273,22 +288,21 @@ public class Crawler implements Runnable {
                     }
                     
                     //downloads the URL
-                    try {
+                    //try {
                         //System.out.println(threadName + ": " + url);
                         if(pagesCrawled.get() < numPagesToCrawl){
-                            boolean success = downloadFile(url);
-                            if(success){
+                            if(downloadFile(url)){
                                 //keeps track of how many pages we have crawled
                                 int p = pagesCrawled.incrementAndGet();
-                                if(p % 100 == 0) System.out.println("Pages Crawled: " + p);
+                                System.out.println("Pages Crawled: " + p);
                             }
                             else pagesLeft.release(); //downloadFile failed. Release permit
                         }
-                    } catch (IOException e) {
-                        //downloadFile threw an IOexception so we must release a permit
-                        pagesLeft.release();
-                        e.printStackTrace();
-                    }
+                    //} catch (IOException e) {
+                    //    //downloadFile threw an IOexception so we must release a permit
+                    //    pagesLeft.release();
+                    //    e.printStackTrace();
+                    //}
                     
                 }
                 //releases the permit since it did not "use" it to download a URL
