@@ -3,14 +3,10 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.file.*;
 import java.util.Scanner;
-import java.util.SortedMap;
-import java.util.TreeMap;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.Lock;
 import java.util.concurrent.Semaphore;
-import java.util.Collections;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -31,7 +27,6 @@ public class Crawler implements Runnable {
     private static AtomicInteger pagesCrawled;      //# of pages we have crawled
     private static Semaphore pagesLeft;             //number of pages left to crawl
     private static AtomicLong docCount;             //# of created documents, used to generate document names
-    private static Object lock;                     //lock used with url_doc_map
     private static Object validLock;                //lock used with url_doc_map
     private static AtomicInteger levelsCrawled;     //# of levels we have crawled
     
@@ -42,12 +37,11 @@ public class Crawler implements Runnable {
     //if the URL was not saved (i.e. has no filename) will hold null for v
     private static ConcurrentSkipListMap<String, String> usedUrls;
     
-    private static String url_doc_map = " ";            //holds all url-document mappings
+    private static ConcurrentLinkedQueue<String> url_doc_map;            //holds all url-document mappings
     
     //Crawler constructor
     Crawler(String name){
         threadName = name;
-        System.out.println("Creating " + threadName);
     }
     
     //Uses a base URL to normalize the given URL. Also cleans the URL of useless things.
@@ -82,7 +76,7 @@ public class Crawler implements Runnable {
         if(url.endsWith("/") && len > 1) alt = url.substring(0, len - 2);
         else alt = url + "/";
     	synchronized (usedUrls) {
-    		if (usedUrls.containsKey(url) || usedUrls.containsKey(alt)) {
+    		if (usedUrls.get(url) != null || usedUrls.get(alt) != null) {
     			//System.out.println(url + " is a duplicate!");
     			return true;
     		}
@@ -120,11 +114,6 @@ public class Crawler implements Runnable {
     }
     
     private static boolean writeMapTxt() {
-    	String[] curr;
-    	synchronized (lock) {
-    		curr = url_doc_map.split(" ");
-    		url_doc_map = "";
-    	}
     	//TODO: create txt file, add strings two by two for lines
     	//error checking if curr has odd number length or is empty
     	/*
@@ -136,10 +125,10 @@ public class Crawler implements Runnable {
     	*/
     	///*
     	try{
-    	    PrintWriter writer = new PrintWriter(storagePath + "/"+ "A_url_doc_map" + docCount.get() + ".txt");
-    	    for (int i = 1; i < curr.length - 1; i = i+2) {
-    	    	writer.println(curr[i] + " " + curr[i+1]);
-        	}
+    	    PrintWriter writer = new PrintWriter(storagePath + "/"+ "_url_doc_map" + docCount.get() + ".txt");
+    	    for(String i : url_doc_map){
+    	        writer.println(i);
+    	    }
     	    writer.close();
     	} catch (Exception e) {
     		System.out.println("writeMapTxt: Failed to save file");
@@ -172,11 +161,8 @@ public class Crawler implements Runnable {
                 String fileName = saveAsFile(htmlContent);
                 if( fileName != null){
                     //succeeded in saving html file, now add to url-doc_map string list
-                    synchronized (lock) {
-                        url_doc_map = url_doc_map + url + " " + fileName + " ";
-                        usedUrls.put(url, fileName);
-                    }
-                    //System.out.println("--" + threadName + ": " + url_doc_map);
+                    url_doc_map.add(url + " " + fileName);
+                    usedUrls.put(url, fileName);
                     
                     //Gets all the links in the page and add them into the frontier
                     Elements urlLinks = doc.select("a[href]");
@@ -195,8 +181,6 @@ public class Crawler implements Runnable {
                         
                         if(urlValid){
                             try{
-                                //outputting it here because I/O is slow and its a bad idea to do it in a lock 
-                                //System.out.println("Added " + normalizedURL + " to hashmap");
                                 frontier.add(normalizedURL);
                             } catch(NullPointerException e){
                                 e.printStackTrace();
@@ -224,8 +208,8 @@ public class Crawler implements Runnable {
 	    docCount = new AtomicLong(0);
 	    pagesCrawled = new AtomicInteger(0);
 	    frontier = new ConcurrentLinkedQueue<String>();
+	    url_doc_map = new ConcurrentLinkedQueue<String>();
 	    usedUrls = new ConcurrentSkipListMap<String, String>();
-	    lock = new Object();
 	    validLock = new Object();
 	    
 	    
@@ -281,7 +265,7 @@ public class Crawler implements Runnable {
         
         //creates Crawlers to be used as threads then runs them
         long startTime = System.nanoTime();
-        int numThreads = 16;
+        int numThreads = 4;
 	    Crawler[] c = new Crawler[numThreads];
 	    for(int i = 0; i < numThreads; i++){
 	        c[i] = new Crawler("Thread " + i);
