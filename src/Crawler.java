@@ -3,15 +3,14 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.file.*;
 import java.util.Scanner;
+import java.util.SortedMap;
+import java.util.TreeMap;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.Lock;
 import java.util.concurrent.Semaphore;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
-
-import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -31,18 +30,19 @@ public class Crawler implements Runnable {
     private String threadName;                      //name of the thread
     private static AtomicInteger pagesCrawled;      //# of pages we have crawled
     private static Semaphore pagesLeft;             //number of pages left to crawl
-    //private static AtomicInteger levelsCrawled;     //# of levels we have crawled
-    private static int numThreads;                  //number of threads to create
+    private static AtomicLong docCount;             //# of created documents, used to generate document names
+    private static Object lock;                     //lock used with url_doc_map
+    private static Object validLock;                //lock used with url_doc_map
+    private static AtomicInteger levelsCrawled;     //# of levels we have crawled
     
-    //URL queue. Many threads will access it.
-    private static ConcurrentLinkedQueue<String> frontier = new ConcurrentLinkedQueue<String>();
-    private static Map<String, Boolean> usedUrls_hashmap = Collections.synchronizedMap(new HashMap<String, Boolean>());
-    //long holding number of created documents, used to generate document names
-    private static AtomicLong docCount;
-    //used to hold all url-document mappings
-    private static String url_doc_map = " ";
-    //lock used with url_doc_map
-    private static final Object lock = new Object();
+    //queue holding all the URLs we will crawl
+    private static ConcurrentLinkedQueue<String> frontier;
+    
+    //maps k<usedUrls> -> v<filename>
+    //if the URL was not saved (i.e. has no filename) will hold null for v
+    private static ConcurrentSkipListMap<String, String> usedUrls;
+    
+    private static String url_doc_map = " ";            //holds all url-document mappings
     
     //Crawler constructor
     Crawler(String name){
@@ -65,14 +65,25 @@ public class Crawler implements Runnable {
         String host = normalizedURL.getHost();
         String path = normalizedURL.getPath();
         
-        return protocol + "://" + host + path;
+        String result = protocol + "://" + host + path;
+        try {
+            result = java.net.URLDecoder.decode(result, "UTF-8");
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+            result = null;
+        }
+        return result;
     }
     
     //checks if we have already crawled this URL
     private boolean isDuplicate(String url){
-    	synchronized (usedUrls_hashmap) {
-    		if (usedUrls_hashmap.get(url) != null) {
-    			System.out.println(url + " is a duplicate!");
+        String alt = null;
+        int len = url.length();
+        if(url.endsWith("/") && len > 1) alt = url.substring(0, len - 2);
+        else alt = url + "/";
+    	synchronized (usedUrls) {
+    		if (usedUrls.containsKey(url) || usedUrls.containsKey(alt)) {
+    			//System.out.println(url + " is a duplicate!");
     			return true;
     		}
     	}
@@ -107,8 +118,7 @@ public class Crawler implements Runnable {
     		return null;
     	}
     }
-
-    ///*
+    
     private static boolean writeMapTxt() {
     	String[] curr;
     	synchronized (lock) {
@@ -137,7 +147,6 @@ public class Crawler implements Runnable {
     	}//*/
     	return true;
     }
-	//*/
 
     //downloads the page at the specified URL's location
     //returns true on success
@@ -152,7 +161,7 @@ public class Crawler implements Runnable {
             getSuccess = true;
         } catch (IOException e) {
             //getting the doc failed...
-            e.printStackTrace();
+            //e.printStackTrace();
         }
         
         if(getSuccess){
@@ -165,6 +174,7 @@ public class Crawler implements Runnable {
                     //succeeded in saving html file, now add to url-doc_map string list
                     synchronized (lock) {
                         url_doc_map = url_doc_map + url + " " + fileName + " ";
+                        usedUrls.put(url, fileName);
                     }
                     //System.out.println("--" + threadName + ": " + url_doc_map);
                     
@@ -173,14 +183,20 @@ public class Crawler implements Runnable {
                     for(Element elem : urlLinks){
                         String hrefURL = elem.attr("href");
                         String normalizedURL = normalizeURL(url, hrefURL);
-                        if(isValidURL(normalizedURL)){
-                            //System.out.println(normalizedURL);
+                        
+                        //checks if a URL is valid. Records it if it is to prevent duplicate URLs
+                        boolean urlValid = false;
+                        synchronized(validLock){
+                            urlValid = isValidURL(normalizedURL);
+                            if(urlValid){
+                                usedUrls.put(normalizedURL, "");
+                            }
+                        }
+                        
+                        if(urlValid){
                             try{
-                            	//TODO: add url to Hashmap
-                            	synchronized (usedUrls_hashmap) {
-                            		usedUrls_hashmap.put(url, true);
-                            		System.out.println("Added " + url + " to hashmap");
-                            	}
+                                //outputting it here because I/O is slow and its a bad idea to do it in a lock 
+                                //System.out.println("Added " + normalizedURL + " to hashmap");
                                 frontier.add(normalizedURL);
                             } catch(NullPointerException e){
                                 e.printStackTrace();
@@ -207,6 +223,11 @@ public class Crawler implements Runnable {
 	    storagePath = null;
 	    docCount = new AtomicLong(0);
 	    pagesCrawled = new AtomicInteger(0);
+	    frontier = new ConcurrentLinkedQueue<String>();
+	    usedUrls = new ConcurrentSkipListMap<String, String>();
+	    lock = new Object();
+	    validLock = new Object();
+	    
 	    
 	    //prints error message if arguments are wrong then exits
 	    if(args.length < 3 || args.length > 4){
@@ -240,15 +261,8 @@ public class Crawler implements Runnable {
 	        System.out.println("Invalid path");
 	        e.printStackTrace();
 	    }
-        
-	    ////prints out the variables
-	    //System.out.println("Seed File: " + seedPath);
-	    //System.out.println("Number of Pages to Crawl: " + numPagesToCrawl);
-	    //System.out.println("Number of levels: " + numLevels);
-	    //System.out.println("Storage Path: " + storagePath);
 	    
 	    //initialize the frontier
-        //frontier is a global queue
         Scanner seedScanner = null;
         try {
             seedScanner = new Scanner(seedPath);
@@ -257,6 +271,7 @@ public class Crawler implements Runnable {
             while(seedScanner.hasNext()){
                 String URL = seedScanner.next();
                 frontier.add(URL);
+                usedUrls.put(URL, "");
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -266,18 +281,23 @@ public class Crawler implements Runnable {
         
         //creates Crawlers to be used as threads then runs them
         long startTime = System.nanoTime();
-        numThreads = 4;
+        int numThreads = 16;
 	    Crawler[] c = new Crawler[numThreads];
 	    for(int i = 0; i < numThreads; i++){
 	        c[i] = new Crawler("Thread " + i);
 	        c[i].start();
 	    }
 	    
+	    //waits until we crawl all the pages
 	    while(pagesCrawled.get() < numPagesToCrawl){}
 	    
+	    //prints how long it took to crawl all the pages
 	    long endTime = System.nanoTime();
-	    
 	    System.out.println("seconds: " + (endTime - startTime) / 1000000000);
+	    
+	    //synchronized(usedUrls){
+	    //    System.out.println(usedUrls);
+	    //}
 	    
 	    //Writes url-doc maps into a file once DocName Count reaches required amount
 	    if (!url_doc_map.isEmpty() && docCount.get() == numPagesToCrawl) {
@@ -291,13 +311,12 @@ public class Crawler implements Runnable {
     public void run() {
         while(pagesCrawled.get() < numPagesToCrawl){
             if(pagesLeft.tryAcquire()){
-                //url = head of the frontier; pops the head too
-                String url = frontier.poll();
+                String url = frontier.poll(); //get next URL in queue
                 
                 if(url != null) {
                     //if the URL doesn't have a protocol, attempts to fix it
                     if(!url.startsWith("http://") && !url.startsWith("https://")){
-                        System.out.println("ERROR: URL DOESN'T HAVE PROTOCOL! Attemping recovery by prepending protocol");
+                        System.out.println("ERROR: URL HAS NO PROTOCOL! Attemping recovery by prepending protocol");
                         url  = "http://" + url;
                     }
                     
@@ -308,19 +327,12 @@ public class Crawler implements Runnable {
                             if(downloadFile(url)){
                                 //keeps track of how many pages we have crawled
                                 int p = pagesCrawled.incrementAndGet();
-                                System.out.println("Pages Crawled: " + p);
+                                if(p % 100 == 0)System.out.println("Pages Crawled: " + p);
                             }
                             else pagesLeft.release(); //downloadFile failed. Release permit
                         }
-                    //} catch (IOException e) {
-                    //    //downloadFile threw an IOexception so we must release a permit
-                    //    pagesLeft.release();
-                    //    e.printStackTrace();
-                    //}
-                    
                 }
-                //releases the permit since it did not "use" it to download a URL
-                else pagesLeft.release();
+                else pagesLeft.release();//URL invalid. Release permit
             }
         }
         return;
