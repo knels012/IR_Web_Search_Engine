@@ -112,30 +112,6 @@ public class Crawler implements Runnable {
     		return null;
     	}
     }
-    
-    private static boolean writeMapTxt() {
-    	//TODO: create txt file, add strings two by two for lines
-    	//error checking if curr has odd number length or is empty
-    	/*
-    	System.out.println("==================");	
-    	for (int i = 1; i < curr.length - 1; i = i+2) {
-    		System.out.println(curr[i] + " " + curr[i+1]);
-    	}
-    	System.out.println("==================");
-    	*/
-    	///*
-    	try{
-    	    PrintWriter writer = new PrintWriter(storagePath + "/"+ "_url_doc_map" + docCount.get() + ".txt");
-    	    for(String i : url_doc_map){
-    	        writer.println(i);
-    	    }
-    	    writer.close();
-    	} catch (Exception e) {
-    		System.out.println("writeMapTxt: Failed to save file");
-    		return false;
-    	}//*/
-    	return true;
-    }
 
     //downloads the page at the specified URL's location
     //returns true on success
@@ -265,15 +241,61 @@ public class Crawler implements Runnable {
         
         //creates Crawlers to be used as threads then runs them
         long startTime = System.nanoTime();
-        int numThreads = 4;
+        int numThreads = 16;
 	    Crawler[] c = new Crawler[numThreads];
 	    for(int i = 0; i < numThreads; i++){
 	        c[i] = new Crawler("Thread " + i);
 	        c[i].start();
 	    }
 	    
-	    //waits until we crawl all the pages
-	    while(pagesCrawled.get() < numPagesToCrawl){}
+	    //saves mapping as we crawl pages
+	    //we do not go past this point until we have crawled all the pages
+	    FileWriter fw;
+	    BufferedWriter bw = null;
+	    PrintWriter writer = null;
+	    int pc = 0;        //pages crawled
+	    int pcols = 0;     //pages crawled on last save
+	    int ptcbs = 100;   //pages to crawl before we save
+	    while((pc = pagesCrawled.get()) < numPagesToCrawl){
+    	    int pcsls = pc - pcols; //pages crawled since last save
+	        if(pcsls >= ptcbs){
+	            try{
+	                fw = new FileWriter(storagePath + "/"+ "_url_doc_map.txt", true);
+	                bw = new BufferedWriter(fw);
+	                writer = new PrintWriter(bw);
+	                for(int i = 0; i < pcsls; ){
+	                    String mapping = url_doc_map.poll();
+	                    if(mapping != null) {
+	                        writer.println(mapping);
+	                        i++;
+	                    }
+	                }
+	                System.out.println("saved progress");
+	            } catch(IOException e){
+	               System.out.println("Error while saving progress");
+	               e.printStackTrace();
+	            } finally{
+	                writer.close();
+	                pcols = pc;
+	            }
+    	    }
+	    }
+	    
+	    //save any leftovers
+	    try {
+	        fw = new FileWriter(storagePath + "/"+ "_url_doc_map.txt", true);
+            bw = new BufferedWriter(fw);
+            writer = new PrintWriter(bw);
+            String s = null;
+            while((s = url_doc_map.poll()) != null){
+                writer.println(s);
+            }
+        } catch (IOException e) {
+            System.out.println("Error while saving progress");
+            e.printStackTrace();
+        } finally{
+            writer.close();
+        }
 	    
 	    //prints how long it took to crawl all the pages
 	    long endTime = System.nanoTime();
@@ -284,10 +306,10 @@ public class Crawler implements Runnable {
 	    //}
 	    
 	    //Writes url-doc maps into a file once DocName Count reaches required amount
-	    if (!url_doc_map.isEmpty() && docCount.get() == numPagesToCrawl) {
-	    	writeMapTxt();
-	    	System.out.println("Finished Crawler");
-    	}
+	    //if (!url_doc_map.isEmpty() && docCount.get() == numPagesToCrawl) {
+	    //    writeMapTxt();
+    	//}
+	    System.out.println("Finished Crawler");
 	}
 	
 	//This handles the actions of the thread
