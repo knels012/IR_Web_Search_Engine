@@ -72,7 +72,9 @@ public class Crawler implements Runnable {
         try {
             result = java.net.URLDecoder.decode(result, "UTF-8");
         } catch (UnsupportedEncodingException e) {
-            e.printStackTrace();
+            //e.printStackTrace();
+            result = null;
+        } catch (IllegalArgumentException e) {
             result = null;
         }
         return result;
@@ -136,6 +138,8 @@ public class Crawler implements Runnable {
         } catch (IOException e) {
             //getting the doc failed...
             //e.printStackTrace();
+        } catch (IllegalArgumentException e) {
+            
         }
         
         if(getSuccess){
