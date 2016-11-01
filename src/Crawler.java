@@ -22,7 +22,7 @@ public class Crawler implements Runnable {
     private static int numPagesToCrawl;   //carries permits equal to the number of pages we will crawl
     private static int numLevels;               //how many levels deep we will crawl
     private static Path storagePath;            //path to where we store the html files
-    private static final int numThreads = 4;				//How many threads are run
+    private static final int numThreads = 16;				//How many threads are run
     
     //Thread variables
     private Thread t;                               //the Crawler object's thread
@@ -38,7 +38,7 @@ public class Crawler implements Runnable {
     //Each element hold value for each thread, when all are set to 1, there are no more valid urls within level limits
     private static AtomicIntegerArray LevelLimits = new AtomicIntegerArray(numThreads);
     
-    //queue holding all the URLs we will crawl
+    //queue holding all the URLs we will crawl and Levels of those URLs
     private static ConcurrentLinkedQueue<UrlPair> frontier;
     
     //maps k<usedUrls> -> v<filename>
@@ -329,7 +329,7 @@ public class Crawler implements Runnable {
     	//}
 	    System.out.print("Finished Crawler: ");
 	    if(Objects.equals(LevelLimits.toString(), LevelLimitChecker)) {
-	    	System.out.println("Level Limit caused number of avaliable pages to run out.");
+	    	System.out.println("Avalible pages have run out.");
 	    }
 	    else {
 	    	System.out.println("Number of desired pages have been downloaded.");
@@ -376,7 +376,7 @@ public class Crawler implements Runnable {
                 	pagesLeft.release();//URL invalid. Release permit
                 }
             }
-            if (WaitCount > 500) {
+            if (WaitCount > 1000) {
             	//if the current thread is waiting, set the int in the LevelLimits array to 1
             	//this says that this thread isn't finding any pages in the queue
             	LevelLimits.set(threadNumb, 1);
