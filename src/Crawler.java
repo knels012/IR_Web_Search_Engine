@@ -39,7 +39,6 @@ public class Crawler implements Runnable {
     private static AtomicIntegerArray LevelLimits = new AtomicIntegerArray(numThreads);
     
     //queue holding all the URLs we will crawl
-    //private static ConcurrentLinkedQueue<String> frontier;
     private static ConcurrentLinkedQueue<UrlPair> frontier;
     
     //maps k<usedUrls> -> v<filename>
@@ -330,7 +329,7 @@ public class Crawler implements Runnable {
     	//}
 	    System.out.print("Finished Crawler: ");
 	    if(Objects.equals(LevelLimits.toString(), LevelLimitChecker)) {
-	    	System.out.println("Level Limit cuased number of avaliable pages to run out.");
+	    	System.out.println("Level Limit caused number of avaliable pages to run out.");
 	    }
 	    else {
 	    	System.out.println("Number of desired pages have been downloaded.");
